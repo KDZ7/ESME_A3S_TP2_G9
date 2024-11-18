@@ -13,5 +13,5 @@ default:
 	cc -o test_mutex test_mutex.c -lpthread
 clean :
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
-	rm -f test test_protocol
+	rm -f test test_protocol test_mutex
 endif
