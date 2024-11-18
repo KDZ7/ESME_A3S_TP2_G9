@@ -5,6 +5,24 @@
 #include <string.h>
 #include "protocol_messag.h"
 
+/*
+ * Un petit programme pour tester le protocole de message
+ * le protocol message:
+ *       - length : taille du message (sizeof(type) + sizeof(pid) + sizeof(data))
+ *       - type : type du message (MSG_TYPE_WRITE, MSG_TYPE_READ)
+ *       - pid : pid du processus qui a envoyé le message (terminal de l'utilisateur)
+ *       - data : données du message
+ *
+ * options:
+ *       -d : device à utiliser (default: /dev/m0)
+ *       -t : type de message (write, read)
+ *       -m : données du message
+ *
+ * exemple:
+ *       ./test_protocol -d /dev/m0 -t write -m "Hello World" (ecriture dans MEM1 coté noyau)
+ *       ./test_protocol -d /dev/m0 -t read (lecture de MEM1 coté noyau)
+ */
+
 #define MEM_SIZE sysconf(_SC_PAGE_SIZE)
 
 int main(int argc, char *argv[])
