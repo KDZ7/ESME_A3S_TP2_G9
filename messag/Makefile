@@ -10,6 +10,7 @@ default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 	cc -o test tmmap.c
 	cc -o test_protocol test_protocol.c
+	cc -o test_mutex test_mutex.c -lpthread
 clean :
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
 	rm -f test test_protocol

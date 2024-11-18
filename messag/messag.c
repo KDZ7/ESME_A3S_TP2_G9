@@ -21,6 +21,25 @@
 // Inclusion du fichier header ou est défini la structure de mon protocole de message
 #include "protocol_messag.h"
 
+/*
+ * Pour eviter les problemes de concurrence sur l'accès à la mémoire MEM1
+ * on n'a le choix entre plusieurs solutions:
+ *
+ * - utiliser des spinlocks
+ * - utiliser des mutex
+ * - utiliser des semaphores
+ * - etc ...
+ *
+ * Ici, on va utiliser des mutex pour protéger l'accès à MEM1
+ * Inclusion de la librairie linux/mutex.h
+ *
+ */
+
+#include <linux/mutex.h>
+
+// Déclaration d'un mutex
+static DEFINE_MUTEX(messag_mutex);
+
 static int messag_major = 0;
 
 MODULE_AUTHOR("P. Foubet");
@@ -79,10 +98,14 @@ ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_
 {
    struct protocol_message *protocol_msg;
 
+   // Verrouiller le mutex pour protéger l'accès à MEM1
+   mutex_lock(&messag_mutex);
+
    // Vérifier que le message a une taille suffisante pour remplir la structure du protocole de message
    if (nbc < sizeof(struct protocol_message))
    {
       printk(KERN_ERR "Message trop court pour être valide\n");
+      mutex_unlock(&messag_mutex); // Déverrouiller le mutex
       return -EINVAL;
    }
 
@@ -91,6 +114,7 @@ ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_
    if (!protocol_msg)
    {
       printk(KERN_ERR "Erreur d'allocation de mémoire\n");
+      mutex_unlock(&messag_mutex); // Déverrouiller le mutex
       return -ENOMEM;
    }
 
@@ -99,6 +123,7 @@ ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_
    {
       printk(KERN_ERR "Erreur de copie des données\n");
       kfree(protocol_msg);
+      mutex_unlock(&messag_mutex);
       return -EFAULT;
    }
 
@@ -115,6 +140,7 @@ ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_
       {
          printk(KERN_ERR "Message trop grand pour la mémoire MEM1\n");
          kfree(protocol_msg);
+         mutex_unlock(&messag_mutex);
          return -EINVAL;
       }
       // Copier les données du message dans MEM1
@@ -125,11 +151,13 @@ ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_
    default:
       printk(KERN_ERR "Type de message inconnu\n");
       kfree(protocol_msg);
+      mutex_unlock(&messag_mutex);
       return -EINVAL;
    }
 
    // S'assurer de libérer la mémoire allouée pour le protocole de message
    kfree(protocol_msg);
+   mutex_unlock(&messag_mutex);
    return nbc;
 }
 
@@ -140,10 +168,14 @@ ssize_t messag_read1(struct file *fp, char __user *buf, size_t nbc, loff_t *pos)
    ssize_t data_size = MEM_SIZE;
    size_t length = sizeof(struct protocol_message) + data_size;
 
+   // Verrouiller le mutex pour protéger l'accès à MEM1
+   mutex_lock(&messag_mutex);
+
    // Vérifier que l'espace Mémoire est suffisant pour contenir le protocole de message et les données
    if (nbc < length)
    {
       printk(KERN_ERR "Espace insuffisant pour le message\n");
+      mutex_unlock(&messag_mutex);
       return -EINVAL;
    }
 
@@ -152,6 +184,7 @@ ssize_t messag_read1(struct file *fp, char __user *buf, size_t nbc, loff_t *pos)
    if (!protocol_msg)
    {
       printk(KERN_ERR "Erreur d'allocation de mémoire\n");
+      mutex_unlock(&messag_mutex);
       return -ENOMEM;
    }
 
@@ -166,11 +199,13 @@ ssize_t messag_read1(struct file *fp, char __user *buf, size_t nbc, loff_t *pos)
    {
       printk(KERN_ERR "Erreur de copie des données\n");
       kfree(protocol_msg);
+      mutex_unlock(&messag_mutex);
       return -EFAULT;
    }
 
    // S'assurer de libérer la mémoire allouée pour le protocole de message
    kfree(protocol_msg);
+   mutex_unlock(&messag_mutex);
 
    return length;
 }
