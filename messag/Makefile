@@ -9,7 +9,8 @@ else
 default:
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) modules
 	cc -o test tmmap.c
+	cc -o test_protocol test_protocol.c
 clean :
 	$(MAKE) -C $(KERNELDIR) M=$(PWD) clean
-	rm -f test
+	rm -f test test_protocol
 endif

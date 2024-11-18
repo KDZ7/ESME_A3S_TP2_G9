@@ -18,6 +18,9 @@
 #include <asm/page.h>
 #include <asm/io.h>
 
+// Inclusion du fichier header ou est défini la structure de mon protocole de message
+#include "protocol_messag.h"
+
 static int messag_major = 0;
 
 MODULE_AUTHOR("P. Foubet");
@@ -74,31 +77,102 @@ loff_t messag_llseek(struct file *fp, loff_t off, int whence)
 /* pour la fct write */
 ssize_t messag_write1(struct file *fp, const char __user *buf, size_t nbc, loff_t *pos)
 {
-   size_t nbe = nbc, err;
-   loff_t p = *pos;
-   printk(KERN_DEBUG "messag1 : write avec pos=%Ld !\n", p);
-   if ((p < 0) || (p > MEM_SIZE - 1))
-      return 0; /* idem EOF */
-   if (p + nbe > MEM_SIZE)
-      nbe = MEM_SIZE - p;
-   if ((err = copy_from_user((void *)(MEM1 + p), buf, nbe)) != 0)
-      nbe -= err;
-   return nbe; /* retourne le nb de car recus du user */
+   struct protocol_message *protocol_msg;
+
+   // Vérifier que le message a une taille suffisante pour remplir la structure du protocole de message
+   if (nbc < sizeof(struct protocol_message))
+   {
+      printk(KERN_ERR "Message trop court pour être valide\n");
+      return -EINVAL;
+   }
+
+   // Allouer de la mémoire pour le protocole de message
+   protocol_msg = kmalloc(nbc, GFP_KERNEL);
+   if (!protocol_msg)
+   {
+      printk(KERN_ERR "Erreur d'allocation de mémoire\n");
+      return -ENOMEM;
+   }
+
+   // Copier les données du message de l'utilisateur dans la mémoire dynamique protocole_msg
+   if (copy_from_user(protocol_msg, buf, nbc))
+   {
+      printk(KERN_ERR "Erreur de copie des données\n");
+      kfree(protocol_msg);
+      return -EFAULT;
+   }
+
+   // Obtenir la taille des données du message
+   size_t data_size = protocol_msg->length - sizeof(struct protocol_message);
+
+   printk(KERN_INFO "Message reçu: length=%u, type=%u, pid=%u, data=%s\n", protocol_msg->length, protocol_msg->type, protocol_msg->pid, protocol_msg->data);
+
+   // Traiter le message en fonction de son type
+   switch (protocol_msg->type)
+   {
+   case MSG_TYPE_WRITE:
+      if (data_size > MEM_SIZE)
+      {
+         printk(KERN_ERR "Message trop grand pour la mémoire MEM1\n");
+         kfree(protocol_msg);
+         return -EINVAL;
+      }
+      // Copier les données du message dans MEM1
+      memcpy(MEM1, protocol_msg->data, data_size);
+      printk(KERN_INFO "Données copiées dans MEM1 : %s\n", (char *)MEM1);
+      break;
+
+   default:
+      printk(KERN_ERR "Type de message inconnu\n");
+      kfree(protocol_msg);
+      return -EINVAL;
+   }
+
+   // S'assurer de libérer la mémoire allouée pour le protocole de message
+   kfree(protocol_msg);
+   return nbc;
 }
 
 /* pour la fct read */
 ssize_t messag_read1(struct file *fp, char __user *buf, size_t nbc, loff_t *pos)
 {
-   size_t nbe = nbc, err;
-   loff_t p = *pos;
-   printk(KERN_DEBUG "messag1 : read avec pos=%Ld !\n", p);
-   if ((p < 0) || (p > MEM_SIZE - 1))
-      return 0; /* idem EOF */
-   if (p + nbe > MEM_SIZE)
-      nbe = MEM_SIZE - p;
-   if ((err = copy_to_user(buf, (void *)(MEM1 + p), nbe)) != 0)
-      nbe -= err;
-   return nbe; /* retourne le nb de car envoyes */
+   struct protocol_message *protocol_msg;
+   ssize_t data_size = MEM_SIZE;
+   size_t length = sizeof(struct protocol_message) + data_size;
+
+   // Vérifier que l'espace Mémoire est suffisant pour contenir le protocole de message et les données
+   if (nbc < length)
+   {
+      printk(KERN_ERR "Espace insuffisant pour le message\n");
+      return -EINVAL;
+   }
+
+   // Allouer de la mémoire pour le protocole de message
+   protocol_msg = kmalloc(length, GFP_KERNEL);
+   if (!protocol_msg)
+   {
+      printk(KERN_ERR "Erreur d'allocation de mémoire\n");
+      return -ENOMEM;
+   }
+
+   // Préparation du protocole de message
+   protocol_msg->length = length;
+   protocol_msg->type = MSG_TYPE_READ;
+   protocol_msg->pid = current->pid; // PID du processus qui a envoyé le message
+   memcpy(protocol_msg->data, MEM1, data_size);
+
+   // Copier le protocole de message dans l'espace mémoire de l'utilisateur
+   if (copy_to_user(buf, protocol_msg, length))
+   {
+      printk(KERN_ERR "Erreur de copie des données\n");
+      kfree(protocol_msg);
+      return -EFAULT;
+   }
+
+   // S'assurer de libérer la mémoire allouée pour le protocole de message
+   kfree(protocol_msg);
+
+   return length;
 }
 
 /* petite fonction d'initialisation des devices */
